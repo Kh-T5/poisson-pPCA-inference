@@ -5,6 +5,6 @@ Dependencies:
  - Python version: 3.10
  - RUN: pip install -r requirements.txt for packages dependencies.
 
-
-- To run the project, run "python -m inference" in terminal / shell.
+To run the project:
+- run "python -m inference" in terminal / shell.
 - Possibilities to play with model parameters in config.py
