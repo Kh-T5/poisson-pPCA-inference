@@ -25,11 +25,15 @@ class PoissonPPCA:
         self.max_iter = max_iter
         self.track_history = track_history
         self.history_J = []
+
         # Initialisation des paramètres
         self.M = np.zeros((self.n, q))
         self.S = np.ones((self.n, q)) * 0.5
-        self.B = np.random.normal(0, 0.1, (self.p, q))
         self.mu = np.log(1 + Y.mean(axis=0))
+
+        # Initialiser B via SVD(Y) suivant l'initialisation de l'article pour garantir plus de stabilité
+        U, s, Vt = np.linalg.svd(Y - Y.mean(0), full_matrices=False)
+        self.B = Vt[:q].T  # (p, q) loadings initiaux
 
     def compute_A(self):
         """
@@ -37,7 +41,9 @@ class PoissonPPCA:
         """
         MB = self.M @ self.B.T  # [n, p]
         SSBB = 0.5 * (self.S**2) @ (self.B**2).T
-        return np.exp(self.mu + MB + SSBB)
+        Z = self.mu + MB + SSBB
+        Z_clip = np.clip(Z, -20, 20)
+        return np.exp(Z_clip)
 
     def objective(self, x, grad):
         """
@@ -121,15 +127,28 @@ class PoissonPPCA:
         opt = nlopt.opt(nlopt.LD_MMA, len(x0))
         opt.set_min_objective(self.objective)
 
+        eps_s = 1e-6  # Valeur min
+        start_S, end_S = n * q, 2 * n * q  # Emplacement de S dans l'array "packed"
+
+        # Contraintes B : compris dans [-5, 5]
+        start_B = 2 * n * q
+        end_B = start_B + p * q
+
+        # Contraintes M : compris dans [-6, 6]
+        start_M = 0
+        end_M = n * q
+
         # Vecteurs lower et upper bound pour l'opt
         lb = -np.inf * np.ones_like(x0)
         ub = np.inf * np.ones_like(x0)
 
-        eps_s = 1e-6  # Valeur min
-        start_S, end_S = n * q, 2 * n * q  # Emplacement de S dans l'array "packed"
-
-        # Ajout de contrainte écart-type S positif à l'optimiseur
+        # Ajout de contraintes écart-type S positif à l'optimiseur / B et M pour éviter d'avoir J qui explose
         lb[start_S:end_S] = eps_s
+        lb[start_B:end_B] = -5
+        ub[start_B:end_B] = 5
+        lb[start_M:end_M] = -6
+        ub[start_M:end_M] = 6
+
         opt.set_lower_bounds(lb)
         opt.set_upper_bounds(ub)
 
